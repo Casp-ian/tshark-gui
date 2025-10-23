@@ -1,30 +1,39 @@
+use serde_json::{self, Value};
+
 #[derive(Debug)]
 pub struct Packet {
-    pub id: u64,
+    pub timestamp: String,
     pub from: String,
     pub dest: String,
 }
 
-//
-// a line from tshark looks something like this
-// `  id time from → dest protocol ? fromport destport payload...`
-//
+pub fn parse(string: String) -> Result<Packet, String> {
+    let json: Value = serde_json::from_str(&string).expect("invalid json");
 
-pub fn parse(string: String) -> Packet {
-    let (id, rest) = string.split_at(6);
-    let id: u64 = id.trim().parse().unwrap();
+    // `tshark -T ek` prints two jsons to stdout, one with index, and one with values, for now ignore index
+    if json.get("index").is_some() {
+        return Err("not an error TODO".to_owned());
+    }
 
-    let mut rest = rest.split('\t');
+    if let Some(packet) = temp(json) {
+        return Ok(packet);
+    }
 
-    let time = rest.next().unwrap();
+    return Err("got no packet".to_owned());
+}
 
-    let from = rest.next().unwrap().trim();
-    let _ = rest.next();
-    let dest = rest.next().unwrap().trim();
-
-    return Packet {
-        id: id,
-        from: from.into(),
-        dest: dest.into(),
-    };
+fn temp(json: Value) -> Option<Packet> {
+    return Some(Packet {
+        timestamp: json.get("timestamp")?.to_string(),
+        from: json
+            .get("layers")?
+            .get("eth")?
+            .get("eth_eth_dst")?
+            .to_string(),
+        dest: json
+            .get("layers")?
+            .get("eth")?
+            .get("eth_eth_src")?
+            .to_string(),
+    });
 }
