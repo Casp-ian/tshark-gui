@@ -2,7 +2,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
 use std::{
-    io::{self, BufRead},
+    io::{self},
     net::IpAddr,
     process::Command,
     thread,
@@ -11,19 +11,33 @@ use std::{
 use crate::{mask::Ipv4Mask, parse};
 use regex::Regex;
 
-pub struct Network {
-    masks: Vec<Ipv4Mask>,
-    ips: Vec<IpAddr>,
-    reader_channel: Receiver<String>,
+#[derive(Debug)]
+pub struct Computer {
+    pub group: String,
+    pub ip: IpAddr,
 }
 
-fn spawn_stdin_channel() -> Receiver<String> {
-    let (tx, rx) = mpsc::channel::<String>();
+#[derive(Debug)]
+pub struct Packet {
+    pub timestamp: String,
+    pub from: IpAddr,
+    pub dest: IpAddr,
+}
+
+pub struct Network {
+    masks: Vec<Ipv4Mask>,
+    reader_channel: Receiver<Packet>,
+}
+
+fn spawn_stdin_channel() -> Receiver<Packet> {
+    let (tx, rx) = mpsc::channel::<Packet>();
     thread::spawn(move || {
         loop {
             let mut buffer = String::new();
             io::stdin().read_line(&mut buffer).unwrap();
-            tx.send(buffer).unwrap();
+            if let Some(packet) = parse::parse(buffer).unwrap() {
+                tx.send(packet).unwrap();
+            }
         }
     });
     rx
@@ -51,8 +65,27 @@ impl Network {
         }
         return Self {
             masks,
-            ips: vec![],
             reader_channel: spawn_stdin_channel(),
+        };
+    }
+
+    pub fn group(self: &Self, ip: IpAddr) -> Computer {
+        match ip {
+            IpAddr::V4(ipv4) => {
+                for mask in &self.masks {
+                    if mask.contains(ipv4) {
+                        return Computer {
+                            group: "local".to_string(),
+                            ip,
+                        };
+                    }
+                }
+            }
+            _ => todo!(),
+        }
+        return Computer {
+            group: "global".to_string(),
+            ip,
         };
     }
 
@@ -70,35 +103,17 @@ impl Network {
         return false;
     }
 
-    pub fn update(self: &mut Self) {
+    pub fn get_new_packets(self: &mut Self) -> Vec<Packet> {
+        let mut connections: Vec<Packet> = vec![];
         loop {
-            let line = match self.reader_channel.try_recv() {
+            let packet = match self.reader_channel.try_recv() {
                 Ok(x) => x,
-                Err(TryRecvError::Empty) => return,
+                Err(TryRecvError::Empty) => return connections,
                 Err(TryRecvError::Disconnected) => {
                     panic!("reader thread died")
                 }
             };
-
-            let packet = parse::parse(line).unwrap();
-            if let Some(data) = packet {
-                if !self.ips.contains(&data.from) {
-                    println!(
-                        "new ip: {}, it is local {}",
-                        data.from,
-                        self.is_local(data.from),
-                    );
-                    self.ips.push(data.from);
-                }
-                if !self.ips.contains(&data.dest) {
-                    println!(
-                        "new ip: {}, it is local {}",
-                        data.dest,
-                        self.is_local(data.dest),
-                    );
-                    self.ips.push(data.dest);
-                }
-            }
+            connections.push(packet);
         }
     }
 }

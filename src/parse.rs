@@ -1,12 +1,7 @@
 use serde_json::{self, Value};
 use std::{net::IpAddr, str::FromStr};
 
-#[derive(Debug)]
-pub struct Packet {
-    pub timestamp: String,
-    pub from: IpAddr,
-    pub dest: IpAddr,
-}
+use crate::network::Packet;
 
 pub fn parse(string: String) -> Result<Option<Packet>, String> {
     let json: Value = serde_json::from_str(&string).expect("invalid json");

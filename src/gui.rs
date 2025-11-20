@@ -1,11 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use eframe::egui::{self, Color32, Shape, Ui};
+use eframe::egui::{self, Color32, Shape, Stroke, Ui};
 
-use crate::network::Network;
-use crate::visualizer::Visualizer;
+use crate::visualizer::{Pos, Visualizer};
 
-pub fn open_window(network: Network) -> eframe::Result {
+pub fn open_window(visualizer: Visualizer) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 880.0]),
         ..Default::default()
@@ -14,77 +13,80 @@ pub fn open_window(network: Network) -> eframe::Result {
     eframe::run_native(
         "tshark-gui",
         options,
-        Box::new(|cc| Ok(Box::<App>::new(App::new(cc, network)))),
+        Box::new(|cc| Ok(Box::<App>::new(App::new(cc, visualizer)))),
     )
 }
 
 struct App {
-    network: Network,
     visualizer: Visualizer,
 }
 
 impl App {
-    fn new(_cc: &eframe::CreationContext, network: Network) -> Self {
-        let visualizer = Visualizer::new();
-        // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
-        // Restore app state using cc.storage (requires the "persistence" feature).
-        // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
-        // for e.g. egui::PaintCallback.
-        Self {
-            network,
-            visualizer,
-        }
+    fn new(_cc: &eframe::CreationContext, visualizer: Visualizer) -> Self {
+        Self { visualizer }
     }
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            draw(ui, &self.visualizer);
+            draw(ui, ctx, &self.visualizer);
         });
         ctx.request_repaint();
-        self.network.update();
+        update_and_solve(&mut self.visualizer);
     }
 }
 
-fn draw(ui: &mut Ui, vis: &Visualizer) {
-    // stroke(ui, 1.0);
-    // stroke(ui, 50.0);
-    // computer(ui, "test");
+fn update_and_solve(vis: &mut Visualizer) {
+    vis.update();
+    vis.solve(0.000001);
+}
 
+fn draw(ui: &mut Ui, ctx: &egui::Context, vis: &Visualizer) {
     for node in &vis.nodes {
-        computer(ui, &node.group);
+        draw_computer(
+            ui,
+            node.pos.mul(ctx.viewport_rect().width()),
+            &node.computer.ip.to_string(),
+        );
     }
 
     for line in &vis.lines {
-        stroke(ui, 1.0);
+        // println!("{:?}", line);
+        draw_stroke(
+            ui,
+            line.from.mul(ctx.viewport_rect().width()),
+            line.to.mul(ctx.viewport_rect().width()),
+        );
     }
 }
 
-fn computer(ui: &mut Ui, name: &str) {
+fn draw_computer(ui: &mut Ui, pos: Pos, name: &str) {
     ui.painter().text(
-        egui::Pos2 { x: 200.0, y: 100.0 },
+        egui::Pos2 { x: pos.0, y: pos.1 },
+        // pos.into(),
         egui::Align2::CENTER_CENTER,
         name,
         egui::FontId {
-            size: 32.0,
+            size: 8.0,
             family: egui::FontFamily::Monospace,
         },
         Color32::WHITE,
     );
 }
 
-fn stroke(ui: &mut Ui, i: f32) {
-    ui.painter().add(Shape::Circle(egui::epaint::CircleShape {
-        center: egui::Pos2 {
-            x: 100.0,
-            y: 100.0 + i,
+fn draw_stroke(ui: &mut Ui, from: Pos, to: Pos) {
+    ui.painter().line_segment(
+        [
+            egui::Pos2 {
+                x: from.0,
+                y: from.1,
+            },
+            egui::Pos2 { x: to.0, y: to.1 },
+        ],
+        Stroke {
+            width: 5.0,
+            color: Color32::RED,
         },
-        radius: 50.0,
-        fill: Color32::RED,
-        stroke: egui::Stroke {
-            width: 0.1,
-            color: Color32::BLUE,
-        },
-    }));
+    );
 }
