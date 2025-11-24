@@ -33,35 +33,42 @@ impl eframe::App for App {
             draw(ui, ctx, &self.visualizer);
         });
         ctx.request_repaint();
-        update_and_solve(&mut self.visualizer);
+        let time = ctx.input(|x| x.stable_dt);
+        update_and_solve(&mut self.visualizer, time);
     }
 }
 
-fn update_and_solve(vis: &mut Visualizer) {
+fn update_and_solve(vis: &mut Visualizer, time: f32) {
     vis.update();
-    vis.solve(0.000001);
+    vis.solve(time);
 }
 
 fn draw(ui: &mut Ui, ctx: &egui::Context, vis: &Visualizer) {
-    for node in &vis.nodes {
+    for (ip, node) in &vis.get_nodes() {
+        let color = match node.info.local {
+            true => Color32::RED,
+            false => Color32::BLUE,
+        };
+
         draw_computer(
             ui,
-            node.pos.mul(ctx.viewport_rect().width()),
-            &node.computer.ip.to_string(),
+            node.pos.mul(ctx.viewport_rect().height()),
+            &ip.to_string(),
+            color,
         );
     }
 
-    for line in &vis.lines {
+    for line in &vis.get_edges() {
         // println!("{:?}", line);
         draw_stroke(
             ui,
-            line.from.mul(ctx.viewport_rect().width()),
-            line.to.mul(ctx.viewport_rect().width()),
+            line.from.mul(ctx.viewport_rect().height()),
+            line.dest.mul(ctx.viewport_rect().height()),
         );
     }
 }
 
-fn draw_computer(ui: &mut Ui, pos: Pos, name: &str) {
+fn draw_computer(ui: &mut Ui, pos: Pos, name: &str, color: Color32) {
     ui.painter().text(
         egui::Pos2 { x: pos.0, y: pos.1 },
         // pos.into(),
@@ -71,7 +78,7 @@ fn draw_computer(ui: &mut Ui, pos: Pos, name: &str) {
             size: 8.0,
             family: egui::FontFamily::Monospace,
         },
-        Color32::WHITE,
+        color,
     );
 }
 

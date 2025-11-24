@@ -1,87 +1,95 @@
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 
-use crate::network::{Computer, Network};
+use crate::network::{IpInfo, Network};
+
+#[derive(Debug)]
+pub struct Node {
+    pub info: IpInfo,
+    pub pos: Pos,
+}
+
+#[derive(Debug)]
+pub struct Edge {
+    pub from: Pos,
+    pub dest: Pos,
+}
+
+#[derive(Debug)]
+pub struct Connection {
+    pub from: IpAddr,
+    pub dest: IpAddr,
+}
 
 pub struct Visualizer {
     network: Network,
-    pub nodes: Vec<Node>,
-    pub lines: Vec<Line>,
+    nodes: BTreeMap<IpAddr, Node>,
+    lines: Vec<Connection>,
 }
 
 impl Visualizer {
     pub fn new(network: Network) -> Self {
         Self {
             network,
-            nodes: vec![],
+            nodes: BTreeMap::new(),
+            // nodes: vec![],
             lines: vec![],
         }
     }
 
     pub fn update(self: &mut Self) {
         let news = self.network.get_new_packets();
-        self.lines = vec![];
-        for new in news {
-            let from = match self.get(new.from) {
-                Some(node) => node.pos,
-                None => {
-                    let computer = self.network.group(new.from);
-                    let node = self.add_computer(computer);
-                    node.pos
-                }
-            };
-            let dest = match self.get(new.dest) {
-                Some(node) => node.pos,
-                None => {
-                    let computer = self.network.group(new.dest);
-                    let node = self.add_computer(computer);
-                    node.pos
-                }
-            };
-
-            self.lines.push(Line {
-                from: from,
-                to: dest,
-            });
+        // self.lines = vec![];
+        if self.lines.len() > 10 {
+            self.lines.drain(0..10);
         }
-    }
+        for new in news {
+            self.lines.push(Connection {
+                from: new.from,
+                dest: new.dest,
+            });
 
-    fn add_computer(&mut self, computer: Computer) -> &Node {
-        let node = Node {
-            computer,
-            pos: Pos(rand::random_range(0.4..=0.6), rand::random_range(0.4..=0.6)),
-        };
-        self.nodes.push(node);
-
-        // TODO insane
-        return &self.nodes[self.nodes.len() - 1];
-    }
-
-    fn get(&self, ip: IpAddr) -> Option<&Node> {
-        for node in &self.nodes {
-            if node.computer.ip == ip {
-                return Some(&node);
+            if !self.nodes.contains_key(&new.from) {
+                self.add_node(&new.from, self.network.discover(&new.from));
+            }
+            if !self.nodes.contains_key(&new.dest) {
+                self.add_node(&new.dest, self.network.discover(&new.dest));
             }
         }
-        return None;
+    }
+
+    fn add_node(&mut self, ip: &IpAddr, info: IpInfo) -> &Node {
+        let node = Node {
+            info: info,
+            pos: Pos(rand::random_range(0.1..=0.9), rand::random_range(0.1..=0.9)),
+        };
+        self.nodes.insert(*ip, node);
+
+        return &self.nodes.get(ip).unwrap();
     }
 
     pub fn solve(self: &mut Self, strength: f32) {
-        // TODO
+        let mut results: Vec<Pos> = vec![];
+        results.reserve(self.nodes.len());
 
-        for i in 0..self.nodes.len() {
-            let old = &self.nodes[i];
-            let mut force = Pos(0.0, 0.0);
-            force = force + old.pos.grav(Pos(0.5, 0.5));
-            for j in 0..self.nodes.len() {
-                if i != j {
-                    let other = &self.nodes[j];
-                    force = force + old.pos.repel(other.pos);
-                }
-            }
-
-            self.nodes[i].pos = self.nodes[i].pos + force.mul(strength);
+        for (i, node) in self.nodes.values_mut().enumerate() {
+            node.pos = node.pos + node.pos.center_force().mul(5.0 * strength);
         }
         return;
+    }
+
+    pub fn get_nodes(&self) -> Vec<(&IpAddr, &Node)> {
+        return self.nodes.iter().collect();
+    }
+    pub fn get_edges(&self) -> Vec<Edge> {
+        return self
+            .lines
+            .iter()
+            .map(|line| Edge {
+                from: self.nodes.get(&line.from).unwrap().pos,
+                dest: self.nodes.get(&line.dest).unwrap().pos,
+            })
+            .collect();
     }
 }
 
@@ -104,6 +112,12 @@ impl std::ops::Sub for Pos {
 }
 
 impl Pos {
+    fn center_force(self) -> Self {
+        let diff = self - Pos(0.5, 0.5);
+        let mag = (diff.0 * diff.0) + (diff.1 * diff.1);
+        let mag = mag * mag;
+        return diff.mul(-mag);
+    }
     fn grav(self, rhs: Self) -> Self {
         let diff = self - rhs;
         let mag = f32::max((diff.0 * diff.0) + (diff.1 * diff.1), 0.1);
@@ -112,22 +126,13 @@ impl Pos {
     fn repel(self, rhs: Self) -> Self {
         let diff = self - rhs;
         let mag = (diff.0 * diff.0) + (diff.1 * diff.1);
+        if mag > 0.1 {
+            return Pos(0.0, 0.0);
+        }
         Pos(diff.0 / mag, diff.1 / mag)
     }
 
     pub fn mul(self, rhs: f32) -> Self {
         Pos(self.0 * rhs, self.1 * rhs)
     }
-}
-
-#[derive(Debug)]
-pub struct Node {
-    pub computer: Computer,
-    pub pos: Pos,
-}
-
-#[derive(Debug)]
-pub struct Line {
-    pub from: Pos,
-    pub to: Pos,
 }

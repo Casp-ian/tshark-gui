@@ -12,9 +12,10 @@ use crate::{mask::Ipv4Mask, parse};
 use regex::Regex;
 
 #[derive(Debug)]
-pub struct Computer {
-    pub group: String,
-    pub ip: IpAddr,
+pub enum Protocol {
+    Other,
+    QUIC,
+    DNS { name: String },
 }
 
 #[derive(Debug)]
@@ -22,6 +23,12 @@ pub struct Packet {
     pub timestamp: String,
     pub from: IpAddr,
     pub dest: IpAddr,
+    // pub protocol: Protocol,
+}
+
+#[derive(Debug)]
+pub struct IpInfo {
+    pub local: bool,
 }
 
 pub struct Network {
@@ -35,8 +42,12 @@ fn spawn_stdin_channel() -> Receiver<Packet> {
         loop {
             let mut buffer = String::new();
             io::stdin().read_line(&mut buffer).unwrap();
-            if let Some(packet) = parse::parse(buffer).unwrap() {
-                tx.send(packet).unwrap();
+            if let Ok(packet) = parse::parse(buffer) {
+                if let Some(packet) = packet {
+                    tx.send(packet).unwrap();
+                }
+            } else {
+                eprintln!("parsing error");
             }
         }
     });
@@ -49,7 +60,7 @@ impl Network {
         let temp = Command::new("ip")
             .args(["address", "show"])
             .output()
-            .expect("failed to execute process");
+            .expect("failed to start stdin reading");
 
         let output = String::from_utf8(temp.stdout).unwrap();
 
@@ -58,9 +69,10 @@ impl Network {
         for cap in caps {
             if let Some(mask) = &cap.name("inet") {
                 masks.push(Ipv4Mask::from_str(mask.as_str()).unwrap());
-                eprintln!("captured: {:?}", mask.as_str());
+                // eprintln!("captured: {:?}", mask.as_str());
             } else if let Some(mask) = &cap.name("inet6") {
-                eprintln!("capturedv6: {:?}", mask.as_str());
+                // TODO actually store mask
+                // eprintln!("capturedv6: {:?}", mask.as_str());
             }
         }
         return Self {
@@ -69,27 +81,7 @@ impl Network {
         };
     }
 
-    pub fn group(self: &Self, ip: IpAddr) -> Computer {
-        match ip {
-            IpAddr::V4(ipv4) => {
-                for mask in &self.masks {
-                    if mask.contains(ipv4) {
-                        return Computer {
-                            group: "local".to_string(),
-                            ip,
-                        };
-                    }
-                }
-            }
-            _ => todo!(),
-        }
-        return Computer {
-            group: "global".to_string(),
-            ip,
-        };
-    }
-
-    pub fn is_local(self: &Self, ip: IpAddr) -> bool {
+    fn is_local(&self, ip: &IpAddr) -> bool {
         match ip {
             IpAddr::V4(ipv4) => {
                 for mask in &self.masks {
@@ -101,6 +93,12 @@ impl Network {
             _ => todo!(),
         }
         return false;
+    }
+
+    pub fn discover(self: &Self, ip: &IpAddr) -> IpInfo {
+        return IpInfo {
+            local: self.is_local(ip),
+        };
     }
 
     pub fn get_new_packets(self: &mut Self) -> Vec<Packet> {

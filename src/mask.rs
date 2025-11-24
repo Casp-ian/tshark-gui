@@ -15,7 +15,7 @@ impl Ipv4Mask {
         return Ok(Self { ip, bits });
     }
 
-    pub fn contains(self: &Self, ip: Ipv4Addr) -> bool {
+    pub fn contains(self: &Self, ip: &Ipv4Addr) -> bool {
         let mask = !((1u32 << self.bits) - 1);
         let left = ip.to_bits();
         let right = self.ip.to_bits();
