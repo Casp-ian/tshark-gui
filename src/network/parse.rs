@@ -4,6 +4,6 @@ mod ek;
 mod tabs;
 
 pub fn parse(string: String) -> Result<Option<Packet>, String> {
-    // return tabs::parse(string);
-    return ek::parse(string);
+    // return ek::parse(string);
+    return tabs::parse(string);
 }

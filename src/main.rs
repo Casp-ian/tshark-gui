@@ -4,9 +4,7 @@ use std::io::{self};
 use crate::{network::Network, visualizer::Visualizer};
 
 mod gui;
-mod mask;
 mod network;
-mod parse;
 mod visualizer;
 
 fn main() -> io::Result<()> {

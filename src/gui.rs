@@ -1,12 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use eframe::egui::{self, Color32, Shape, Stroke, Ui};
+use eframe::egui::{self, Color32, Stroke, Ui};
+
+use crate::network::grouper::Group;
 
 use crate::visualizer::{Pos, Visualizer};
 
 pub fn open_window(visualizer: Visualizer) -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 880.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 320.0]),
         ..Default::default()
     };
 
@@ -44,10 +46,21 @@ fn update_and_solve(vis: &mut Visualizer, time: f32) {
 }
 
 fn draw(ui: &mut Ui, ctx: &egui::Context, vis: &Visualizer) {
+    for line in &vis.get_edges() {
+        // println!("{:?}", line);
+        draw_stroke(
+            ui,
+            line.from.mul(ctx.viewport_rect().height()),
+            line.dest.mul(ctx.viewport_rect().height()),
+            Color32::WHITE.linear_multiply(line.brightness),
+        );
+    }
+
     for (ip, node) in &vis.get_nodes() {
-        let color = match node.info.local {
-            true => Color32::RED,
-            false => Color32::BLUE,
+        let color = match node.info.group {
+            Group::Me => Color32::GREEN,
+            Group::Local => Color32::BLUE,
+            Group::Global => Color32::RED,
         };
 
         draw_computer(
@@ -55,15 +68,6 @@ fn draw(ui: &mut Ui, ctx: &egui::Context, vis: &Visualizer) {
             node.pos.mul(ctx.viewport_rect().height()),
             &ip.to_string(),
             color,
-        );
-    }
-
-    for line in &vis.get_edges() {
-        // println!("{:?}", line);
-        draw_stroke(
-            ui,
-            line.from.mul(ctx.viewport_rect().height()),
-            line.dest.mul(ctx.viewport_rect().height()),
         );
     }
 }
@@ -82,7 +86,7 @@ fn draw_computer(ui: &mut Ui, pos: Pos, name: &str, color: Color32) {
     );
 }
 
-fn draw_stroke(ui: &mut Ui, from: Pos, to: Pos) {
+fn draw_stroke(ui: &mut Ui, from: Pos, to: Pos, color: Color32) {
     ui.painter().line_segment(
         [
             egui::Pos2 {
@@ -92,8 +96,8 @@ fn draw_stroke(ui: &mut Ui, from: Pos, to: Pos) {
             egui::Pos2 { x: to.0, y: to.1 },
         ],
         Stroke {
-            width: 5.0,
-            color: Color32::RED,
+            width: 2.0,
+            color: color,
         },
     );
 }

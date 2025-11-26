@@ -10,21 +10,17 @@ pub struct Node {
 }
 
 #[derive(Debug)]
-pub struct Edge {
-    pub from: Pos,
-    pub dest: Pos,
-}
-
-#[derive(Debug)]
-pub struct Connection {
-    pub from: IpAddr,
-    pub dest: IpAddr,
+pub struct Edge<T> {
+    pub from: T,
+    pub dest: T,
+    pub brightness: f32,
+    // pub protocol: Protocol,
 }
 
 pub struct Visualizer {
     network: Network,
     nodes: BTreeMap<IpAddr, Node>,
-    lines: Vec<Connection>,
+    edges: Vec<Edge<IpAddr>>,
 }
 
 impl Visualizer {
@@ -32,21 +28,17 @@ impl Visualizer {
         Self {
             network,
             nodes: BTreeMap::new(),
-            // nodes: vec![],
-            lines: vec![],
+            edges: vec![],
         }
     }
 
     pub fn update(self: &mut Self) {
         let news = self.network.get_new_packets();
-        // self.lines = vec![];
-        if self.lines.len() > 10 {
-            self.lines.drain(0..10);
-        }
         for new in news {
-            self.lines.push(Connection {
+            self.edges.push(Edge {
                 from: new.from,
                 dest: new.dest,
+                brightness: 1.0,
             });
 
             if !self.nodes.contains_key(&new.from) {
@@ -69,8 +61,30 @@ impl Visualizer {
     }
 
     pub fn solve(self: &mut Self, strength: f32) {
+        self.edges
+            .iter_mut()
+            .for_each(|edge| edge.brightness -= strength);
+        self.edges.retain(|edge| edge.brightness > 0.0);
+
         let mut results: Vec<Pos> = vec![];
         results.reserve(self.nodes.len());
+
+        let mut repels: Vec<Pos> = vec![];
+
+        for (i, node1) in self.nodes.values().enumerate() {
+            let mut force = Pos(0.0, 0.0);
+            for (j, node2) in self.nodes.values().enumerate() {
+                if i == j {
+                    continue;
+                }
+                force = force + node1.pos.repel(node2.pos).mul(0.0001 * strength);
+            }
+            repels.push(force);
+        }
+
+        for (i, node) in self.nodes.values_mut().enumerate() {
+            node.pos = node.pos + repels[i];
+        }
 
         for (i, node) in self.nodes.values_mut().enumerate() {
             node.pos = node.pos + node.pos.center_force().mul(5.0 * strength);
@@ -81,13 +95,14 @@ impl Visualizer {
     pub fn get_nodes(&self) -> Vec<(&IpAddr, &Node)> {
         return self.nodes.iter().collect();
     }
-    pub fn get_edges(&self) -> Vec<Edge> {
+    pub fn get_edges(&self) -> Vec<Edge<Pos>> {
         return self
-            .lines
+            .edges
             .iter()
             .map(|line| Edge {
                 from: self.nodes.get(&line.from).unwrap().pos,
                 dest: self.nodes.get(&line.dest).unwrap().pos,
+                brightness: line.brightness,
             })
             .collect();
     }
